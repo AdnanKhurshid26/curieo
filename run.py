@@ -8,7 +8,6 @@ def main():
 
     input_file = sys.argv[1]
     output_file = sys.argv[2]
-
     cpp_program = './main'
 
     try:
