@@ -12,14 +12,20 @@ struct Entry
     float severity;
 };
 
+struct Data
+{
+    float sum = 0;
+    float minSeverity = numeric_limits<float>::max();
+    float maxSeverity = numeric_limits<float>::min();
+    int count = 0;
+};
+
 struct Node
 {
     int start, end;
-    float sum;
-    float minSeverity;
-    float maxSeverity;
     Node *left;
     Node *right;
+    map<string, Data> errorToDataMap;
 
     Node(int start, int end) : start(start), end(end), left(nullptr), right(nullptr) {}
 };
@@ -37,37 +43,64 @@ private:
         Node *node = new Node(start, end);
         if (start == end)
         {
-            node->sum = data[start].severity;
-            node->minSeverity = data[start].severity;
-            node->maxSeverity = data[start].severity;
+            Data temp;
+            temp.sum = data[start].severity;
+            temp.minSeverity = data[start].severity;
+            temp.maxSeverity = data[start].severity;
+            temp.count = 1;
+            node->errorToDataMap[data[start].errortype] = temp;
         }
         else
         {
             int mid = (start + end) / 2;
             node->left = build(data, start, mid);
             node->right = build(data, mid + 1, end);
-            node->sum = (node->left ? node->left->sum : 0) + (node->right ? node->right->sum : 0);
-            node->minSeverity = min((node->left ? node->left->minSeverity : numeric_limits<float>::max()), (node->right ? node->right->minSeverity : numeric_limits<float>::max()));
-            node->maxSeverity = max((node->left ? node->left->maxSeverity : numeric_limits<float>::min()), (node->right ? node->right->maxSeverity : numeric_limits<float>::min()));
+
+            for (const auto &pair : node->left->errorToDataMap)
+            {
+                node->errorToDataMap[pair.first].sum += pair.second.sum;
+                node->errorToDataMap[pair.first].minSeverity = min(node->errorToDataMap[pair.first].minSeverity, pair.second.minSeverity);
+                node->errorToDataMap[pair.first].maxSeverity = max(node->errorToDataMap[pair.first].maxSeverity, pair.second.maxSeverity);
+                node->errorToDataMap[pair.first].count += pair.second.count;
+            }
+
+            for (const auto &pair : node->right->errorToDataMap)
+            {
+                node->errorToDataMap[pair.first].sum += pair.second.sum;
+                node->errorToDataMap[pair.first].minSeverity = min(node->errorToDataMap[pair.first].minSeverity, pair.second.minSeverity);
+                node->errorToDataMap[pair.first].maxSeverity = max(node->errorToDataMap[pair.first].maxSeverity, pair.second.maxSeverity);
+                node->errorToDataMap[pair.first].count += pair.second.count;
+            }
         }
         return node;
     }
 
-    int query(Node *node, int L, int R, float &minSeverity, float &maxSeverity)
+    float query(Node *node, int L, int R, float &minSeverity, float &maxSeverity, int &count)
     {
-        if (node->start > R || node->end < L)
+        if (!node || node->start > R || node->end < L)
             return 0;
         if (L <= node->start && node->end <= R)
         {
-            minSeverity = node->minSeverity;
-            maxSeverity = node->maxSeverity;
-            return node->sum;
+            minSeverity = numeric_limits<float>::max();
+            maxSeverity = numeric_limits<float>::min();
+            float sum = 0;
+            count = 0;
+            for (const auto &pair : node->errorToDataMap)
+            {
+                sum += pair.second.sum;
+                minSeverity = min(minSeverity, pair.second.minSeverity);
+                maxSeverity = max(maxSeverity, pair.second.maxSeverity);
+                count += pair.second.count;
+            }
+            return sum;
         }
         float leftMin, leftMax, rightMin, rightMax;
-        int leftSum = query(node->left, L, R, leftMin, leftMax);
-        int rightSum = query(node->right, L, R, rightMin, rightMax);
+        int leftCount = 0, rightCount = 0;
+        float leftSum = query(node->left, L, R, leftMin, leftMax, leftCount);
+        float rightSum = query(node->right, L, R, rightMin, rightMax, rightCount);
         minSeverity = min(leftMin, rightMin);
         maxSeverity = max(leftMax, rightMax);
+        count = leftCount + rightCount;
         return leftSum + rightSum;
     }
 
@@ -91,9 +124,9 @@ public:
         deleteTree(root);
     }
 
-    int query(int start, int end, float &minSeverity, float &maxSeverity)
+    float query(int start, int end, float &minSeverity, float &maxSeverity, int &count)
     {
-        return query(root, start, end, minSeverity, maxSeverity);
+        return query(root, start, end, minSeverity, maxSeverity, count);
     }
 
     void rebuild(vector<Entry> &data)
@@ -141,20 +174,21 @@ int main()
             cout << "Enter timestamp: ";
             cin >> ts;
             float minSeverity, maxSeverity;
-            float sum = segTree.query(0, mp[ts], minSeverity, maxSeverity);
-            cout << "Min: " << minSeverity<<", Max: "<<maxSeverity<<", Mean: "<<(float)sum / (mp[ts] + 1) <<endl;
+            int count = 0;
+            float sum = segTree.query(0, mp[ts], minSeverity, maxSeverity, count);
+            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
         }
         else if (type == 2)
         {
-            Entry Entry;
+            Entry entry;
             cout << "Enter timestamp: ";
-            cin >> Entry.timestamp;
+            cin >> entry.timestamp;
             cout << "Enter errortype: ";
-            cin >> Entry.errortype;
+            cin >> entry.errortype;
             cout << "Enter severity: ";
-            cin >> Entry.severity;
-            data.push_back(Entry);
-            mp[Entry.timestamp] = n++;
+            cin >> entry.severity;
+            data.push_back(entry);
+            mp[entry.timestamp] = n++;
             segTree.rebuild(data);
         }
         else
