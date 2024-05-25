@@ -2,6 +2,7 @@
 #include <vector>
 #include <map>
 #include <limits>
+#include <algorithm>
 
 using namespace std;
 
@@ -104,6 +105,38 @@ private:
         return leftSum + rightSum;
     }
 
+    float queryByErrorType(Node *node, int L, int R, const string &errorType, float &minSeverity, float &maxSeverity, int &count)
+    {
+        if (!node || node->start > R || node->end < L)
+            return 0;
+        if (L <= node->start && node->end <= R)
+        {
+            if (node->errorToDataMap.find(errorType) != node->errorToDataMap.end())
+            {
+                const Data &data = node->errorToDataMap[errorType];
+                minSeverity = data.minSeverity;
+                maxSeverity = data.maxSeverity;
+                count = data.count;
+                return data.sum;
+            }
+            else
+            {
+                minSeverity = numeric_limits<float>::max();
+                maxSeverity = numeric_limits<float>::min();
+                count = 0;
+                return 0;
+            }
+        }
+        float leftMin, leftMax, rightMin, rightMax;
+        int leftCount = 0, rightCount = 0;
+        float leftSum = queryByErrorType(node->left, L, R, errorType, leftMin, leftMax, leftCount);
+        float rightSum = queryByErrorType(node->right, L, R, errorType, rightMin, rightMax, rightCount);
+        minSeverity = min(leftMin, rightMin);
+        maxSeverity = max(leftMax, rightMax);
+        count = leftCount + rightCount;
+        return leftSum + rightSum;
+    }
+
     void deleteTree(Node *node)
     {
         if (node == nullptr)
@@ -129,6 +162,11 @@ public:
         return query(root, start, end, minSeverity, maxSeverity, count);
     }
 
+    float queryByErrorType(int start, int end, const string &errorType, float &minSeverity, float &maxSeverity, int &count)
+    {
+        return queryByErrorType(root, start, end, errorType, minSeverity, maxSeverity, count);
+    }
+
     void rebuild(vector<Entry> &data)
     {
         deleteTree(root);
@@ -141,7 +179,6 @@ int main()
     int n;
     cout << "Enter number of elements: ";
     cin >> n;
-    map<long, int> mp;
 
     vector<Entry> data(n);
     cout << "Enter the elements: " << endl;
@@ -153,7 +190,10 @@ int main()
         cin >> data[i].errortype;
         cout << "Enter severity: ";
         cin >> data[i].severity;
-
+    }
+    map<long, int> mp;
+    for (int i = 0; i < n; ++i)
+    {
         mp[data[i].timestamp] = i;
     }
 
@@ -166,19 +206,9 @@ int main()
     for (int i = 0; i < queries; ++i)
     {
         int type;
-        cout << "Enter query type (1 for range sum, 2 to add an element): ";
+        cout << "1. Add an entry\n2. Query for a logtype\n3. Query before a timestamp\n4. Query after a timestamp\n5. Query before a timestamp of a specific error type\n6. Query after a timestamp of a specific error type\n";
         cin >> type;
         if (type == 1)
-        {
-            int ts;
-            cout << "Enter timestamp: ";
-            cin >> ts;
-            float minSeverity, maxSeverity;
-            int count = 0;
-            float sum = segTree.query(0, mp[ts], minSeverity, maxSeverity, count);
-            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
-        }
-        else if (type == 2)
         {
             Entry entry;
             cout << "Enter timestamp: ";
@@ -187,13 +217,96 @@ int main()
             cin >> entry.errortype;
             cout << "Enter severity: ";
             cin >> entry.severity;
+
             data.push_back(entry);
-            mp[entry.timestamp] = n++;
+            mp[entry.timestamp] = data.size() - 1;
+
             segTree.rebuild(data);
         }
-        else
+        else if (type == 2){
+            string errorType;
+            cout<<"Enter errortype : ";
+            cin>>errorType;
+
+            float minSeverity, maxSeverity;
+            int count = 0;
+            float sum =segTree.queryByErrorType(0, data.size()-1, errorType, minSeverity, maxSeverity, count);
+            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
+
+        }
+        else if (type == 3)
         {
-            cout << "Invalid query type!" << endl;
+            long ts;
+            cout << "Enter timestamp: ";
+            cin >> ts;
+
+            auto it = lower_bound(mp.begin(), mp.end(), ts, [](const pair<long, int> &a, long b){ return a.first < b; });
+
+            int pos = (it == mp.end()) ? data.size() - 1 : distance(mp.begin(), it);
+            if (it != mp.end() && it->first > ts && it != mp.begin())
+            {
+                pos = distance(mp.begin(), prev(it));
+            }
+
+            float minSeverity, maxSeverity;
+            int count = 0;
+            float sum = segTree.query(0, pos, minSeverity, maxSeverity, count);
+            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
+        }
+        else if (type == 4)
+        {
+            long ts;
+            cout << "Enter timestamp: ";
+            cin >> ts;
+
+            auto it = upper_bound(mp.begin(), mp.end(), ts, [](long b, const pair<long, int> &a)  { return b < a.first; });
+
+            int pos = (it == mp.end()) ? data.size() - 1 : distance(mp.begin(), it);
+
+            float minSeverity, maxSeverity;
+            int count = 0;
+            float sum = segTree.query(pos, data.size() - 1, minSeverity, maxSeverity, count);
+            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
+        }
+        else if (type == 5)
+        {
+            long ts;
+            cout << "Enter timestamp: ";
+            cin >> ts;
+            string errorType;
+            cout << "Enter errortype: ";
+            cin >> errorType;
+
+            auto it = lower_bound(mp.begin(), mp.end(), ts, [](const pair<long, int> &a, long b) { return a.first < b; });
+
+            int pos = (it == mp.end()) ? data.size() - 1 : distance(mp.begin(), it);
+            if (it != mp.end() && it->first > ts && it != mp.begin())
+            {
+                pos = distance(mp.begin(), prev(it));
+            }
+
+            float minSeverity, maxSeverity;
+            int count = 0;
+            float sum = segTree.queryByErrorType(0, pos, errorType, minSeverity, maxSeverity, count);
+            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
+        }
+        else if (type == 6)
+        {
+            long ts;
+            cout << "Enter timestamp: ";
+            cin >> ts;
+            string errorType;
+            cout << "Enter errortype: ";
+            cin >> errorType;
+
+            auto it = upper_bound(mp.begin(), mp.end(), ts, [](long b, const pair<long, int> &a) { return b < a.first; });
+
+            int pos = (it == mp.end()) ? data.size() - 1 : distance(mp.begin(), it);
+
+            float minSeverity, maxSeverity;
+            int count = 0;
+            float sum = segTree.queryByErrorType(pos, data.size() - 1, errorType, minSeverity, maxSeverity, count);
+            cout << "Min: " << minSeverity << ", Max: " << maxSeverity << ", Mean: " << (count ? sum / count : 0) << endl;
         }
     }
 
